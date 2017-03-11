@@ -119,7 +119,7 @@ void dealRequest(char *request_content) {
  * @return
  */
 char * execPHP(char *args){
-    // 需要给command留下足够长的空间以存储args参数
+    // 这里不能用变长数组，需要给command留下足够长的空间，以存储args参数，不然拼接参数时会栈溢出
     char command[BUFF_SIZE] = "php /Users/mfhj-dz-001-441/CLionProjects/cproject/tinyServer/index.php ";
     FILE *fp;
     static char buff[BUFF_SIZE]; // 声明静态变量以返回变量指针地址
@@ -129,7 +129,7 @@ char * execPHP(char *args){
     if((fp = popen(command, "r")) == NULL){
         strcpy(buff, "服务器内部错误");
     }else{
-        // fgets会在获取到换行时停止
+        // fgets会在获取到换行时停止，这里将每一行拼接起来
         while (fgets(line, BUFF_SIZE, fp) != NULL){
             strcat(buff, line);
         };
