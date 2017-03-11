@@ -8,10 +8,25 @@
 
 #define PORT 8080
 #define HOST "127.0.0.1"
-#define BUFF_SIZE 4096
+#define BUFF_SIZE 1024
 #define REQUEST_QUEUE_LENGTH 10
 
+int server_fd;
+int client_fd;
+struct sockaddr_in client_addr;
+socklen_t len_client_addr = sizeof(client_addr);
+char http_request[BUFF_SIZE], response_header[BUFF_SIZE], response_content[BUFF_SIZE], http_response[BUFF_SIZE];
+char *header_tmpl = "HTTP/1.1 200 OK\r\n"
+        "Server: ZBS's Server V1.0\r\n"
+        "Accept-Ranges: bytes\r\n"
+        "Content-Length: %d\r\n"
+        "Connection: close\r\n"
+        "Content-Type: text/html\r\n\r\n";
+
 int startServer();
+void dealRequest(char *http_request);
+void dealResponse();
+char * execPHP();
 
 /**
  * 创建一个server socket
@@ -52,7 +67,7 @@ int startServer() {
      * 没有相关函数将这个字符串转换成需要的形式，也就很难给 sockaddr 类型的变量赋值，所以使用 sockaddr_in 来代替。
      * 这两个结构体的长度相同，强制转换类型时不会丢失字节，也没有多余的字节。
      */
-    if (bind(sock_fd, (struct sockaddr *) &server_addr, sizeof (server_addr)) == -1) {
+    if (bind(sock_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) == -1) {
         perror("bind_error");
         exit(1);
     }
@@ -70,21 +85,60 @@ int startServer() {
     return (sock_fd);
 }
 
-int main() {
-    int server_fd;
-    int client_fd;
-    struct sockaddr_in client_addr;
-    socklen_t len_client_addr = sizeof (client_addr);
-    char http_request[BUFF_SIZE], http_header[BUFF_SIZE], http_response[BUFF_SIZE];
-    char *http_res_tmpl = "HTTP/1.1 200 OK\r\n"
-            "Server: ZBS's Server V1.0\r\n"
-            "Accept-Ranges: bytes\r\n"
-            "Content-Length: %d\r\n"
-            "Connection: close\r\n"
-            "Content-Type: %s\r\n\r\n";
-    char content[] = "hello boy!";
-    int len = sizeof (content);
+/**
+ * 处理响应内容
+ */
+void dealResponse() {
+    // int sprintf(char *str, char * format [, argument, ...]) 以format将参数格式化，返回str的长度
+    sprintf(response_header, header_tmpl, strlen(response_content));
+    sprintf(http_response, "%s%s", response_header, response_content);
+}
 
+/**
+ * 处理请求参数
+ *
+ * @param request_content
+ */
+void dealRequest(char *request_content) {
+    char *result;
+    char *first_line = strtok(request_content, "\n"); // 获取第一行 结构类似 "GET /path VERSION"
+    char *method = strtok(first_line, " ");  // 获取到请求方法
+    if(strcmp(method, "GET") != 0){
+        result = "只支持HTTP GET 方法！";
+    }else{
+        char *param = strtok(NULL, " ");  // 获取到参数
+        result = execPHP(param);
+    }
+    strcpy(response_content, result);
+}
+
+/**
+ * 执行PHP脚本以返回执行结果
+ *
+ * @param args
+ * @return
+ */
+char * execPHP(char *args){
+    // 需要给command留下足够长的空间以存储args参数
+    char command[BUFF_SIZE] = "php /Users/mfhj-dz-001-441/CLionProjects/cproject/tinyServer/index.php ";
+    FILE *fp;
+    static char buff[BUFF_SIZE]; // 声明静态变量以返回变量指针地址
+    char line[BUFF_SIZE];
+    strcat(command, args);
+    memset(buff, 0, BUFF_SIZE); // 静态变量会一直保留，这里初始化一下
+    if((fp = popen(command, "r")) == NULL){
+        strcpy(buff, "服务器内部错误");
+    }else{
+        // fgets会在获取到换行时停止
+        while (fgets(line, BUFF_SIZE, fp) != NULL){
+            strcat(buff, line);
+        };
+    }
+
+    return buff;
+}
+
+int main() {
     server_fd = startServer();
     while (1) {
         /**
@@ -96,17 +150,13 @@ int main() {
         client_fd = accept(server_fd, (struct sockaddr *) &client_addr, &len_client_addr);
 
         memset(http_request, 0, BUFF_SIZE); // 初始化缓冲区内容
-
         recv(client_fd, http_request, BUFF_SIZE, 0); // 从客户端socket中读取信息
 
-        // int sprintf(char *str, char * format [, argument, ...]) 以format将参数格式化，返回str的长度
-        sprintf(http_header, http_res_tmpl, len, "text/html");
-        sprintf(http_response, "%s%s", http_header, content);
+        dealRequest(http_request);
+        dealResponse();
 
         // 向socket客户端写入响应结果
-        send(client_fd, http_response, sizeof (http_response), 0);
+        send(client_fd, http_response, sizeof(http_response), 0);
         close(client_fd);
     }
-    close(server_fd);
-    return 0;
 }
