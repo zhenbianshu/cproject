@@ -42,3 +42,25 @@
 
 ###spintf
     int sprintf(char *str, char * format [, argument, ...]) 以format将参数格式化，返回str的长度
+
+###epoll_wait
+    int epoll_wait(int epfd, struct epoll_event *events,
+                      int maxevents, int timeout);
+
+       epfd epoll句柄
+       events  触发事件
+       maxevents  最大事件数量
+       timeout 超时时间  -1会使wait一直阻塞，而0则会立刻返回
+
+       epoll_event 
+           typedef union epoll_data {
+               void    *ptr;
+               int      fd;
+               uint32_t u32;
+               uint64_t u64;
+           } epoll_data_t;
+           
+           struct epoll_event {
+               uint32_t     events;    /* Epoll events */
+               epoll_data_t data;      /* User data variable */
+           };

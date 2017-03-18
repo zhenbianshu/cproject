@@ -5,17 +5,17 @@
 #include <stdlib.h>
 #include <arpa/inet.h> 
 #include <unistd.h>
+#include <sys/epoll.h>
+#include <fcntl.h>
 
 #define PORT 8080
 #define HOST "127.0.0.1"
 #define BUFF_SIZE 1024
 #define REQUEST_QUEUE_LENGTH 10
+#define FD_SIZE 1024
+#define MAX_EVENTS 256
 
-int server_fd;
-int client_fd;
-struct sockaddr_in client_addr;
-socklen_t len_client_addr = sizeof(client_addr);
-char http_request[BUFF_SIZE], response_header[BUFF_SIZE], response_content[BUFF_SIZE], http_response[BUFF_SIZE];
+char response_content[BUFF_SIZE];
 char *header_tmpl = "HTTP/1.1 200 OK\r\n"
         "Server: ZBS's Server V1.0\r\n"
         "Accept-Ranges: bytes\r\n"
@@ -23,23 +23,37 @@ char *header_tmpl = "HTTP/1.1 200 OK\r\n"
         "Connection: close\r\n"
         "Content-Type: text/html\r\n\r\n";
 
-int startServer();
-void dealRequest(char *http_request);
-void dealResponse();
-char * execPHP();
+int server_start();
+
+void deal_request(char *http_request);
+
+char *exec_php(char *args);
+
+void epoll_register(int epoll_fd, int fd, int state);
+
+void epoll_cancel(int epoll_fd, int fd, int state);
+
+void accept_client(int server_fd, int epoll_fd);
+
+void deal_client(int client_fd, int epoll_fd);
 
 /**
  * 创建一个server socket
  */
-int startServer() {
+int server_start() {
     int sock_fd;
     struct sockaddr_in server_addr;
+    int flags;
 
     server_addr.sin_family = AF_INET; // 协议族是IPV4协议
     server_addr.sin_port = htons(PORT); // 将主机的无符号短整形数转换成网络字节顺序
     server_addr.sin_addr.s_addr = inet_addr(HOST); // 用inet_addr函数将字符串host转为int型
 
     sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+
+    // 获取服务器socket的设置，并添加"不阻塞"选项
+    flags = fcntl(sock_fd, F_GETFL, 0);
+    fcntl(sock_fd, F_SETFL, flags|O_NONBLOCK);
 
     if (bind(sock_fd, (struct sockaddr *) &server_addr, sizeof(server_addr)) == -1) {
         perror("bind_error");
@@ -55,29 +69,23 @@ int startServer() {
 }
 
 /**
- * 处理响应内容
- */
-void dealResponse() {
-    sprintf(response_header, header_tmpl, strlen(response_content));
-    sprintf(http_response, "%s%s", response_header, response_content);
-}
-
-/**
  * 处理请求参数
  *
  * @param request_content
  */
-void dealRequest(char *request_content) {
+void deal_request(char *request_content) {
     char *result;
     char *first_line = strtok(request_content, "\n"); // 获取第一行 结构类似 "GET /path VERSION"
     char *method = strtok(first_line, " ");  // 获取到请求方法
-    if(strcmp(method, "GET") != 0){
+    if (strcmp(method, "GET") != 0) {
         result = "只支持HTTP GET 方法！";
-    }else{
+    } else {
         char *param = strtok(NULL, " ");  // 获取到参数
-        result = execPHP(param);
+        result = exec_php(param);
     }
+
     strcpy(response_content, result);
+    return;
 }
 
 /**
@@ -86,19 +94,19 @@ void dealRequest(char *request_content) {
  * @param args
  * @return
  */
-char * execPHP(char *args){
+char *exec_php(char *args) {
     // 这里不能用变长数组，需要给command留下足够长的空间，以存储args参数，不然拼接参数时会栈溢出
-    char command[BUFF_SIZE] = "php /Users/mfhj-dz-001-441/CLionProjects/cproject/tinyServer/index.php ";
+    char command[BUFF_SIZE] = "php /tmp/index.php ";
     FILE *fp;
     static char buff[BUFF_SIZE]; // 声明静态变量以返回变量指针地址
     char line[BUFF_SIZE];
     strcat(command, args);
     memset(buff, 0, BUFF_SIZE); // 静态变量会一直保留，这里初始化一下
-    if((fp = popen(command, "r")) == NULL){
+    if ((fp = popen(command, "r")) == NULL) {
         strcpy(buff, "服务器内部错误");
-    }else{
+    } else {
         // fgets会在获取到换行时停止，这里将每一行拼接起来
-        while (fgets(line, BUFF_SIZE, fp) != NULL){
+        while (fgets(line, BUFF_SIZE, fp) != NULL) {
             strcat(buff, line);
         };
     }
@@ -106,18 +114,96 @@ char * execPHP(char *args){
     return buff;
 }
 
+/**
+ * 注册epoll事件
+ *
+ * @param epoll_fd  epoll句柄
+ * @param fd        socket句柄
+ * @param state    监听状态
+ */
+void epoll_register(int epoll_fd, int fd, int state) {
+    struct epoll_event event;
+    event.events = state;
+    event.data.fd = fd;
+    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, fd, &event);
+}
+
+/**
+ * 取消epoll事件
+ *
+ * @param epoll_fd  epoll句柄
+ * @param fd        socket句柄
+ * @param state    监听状态
+ */
+void epoll_cancel(int epoll_fd, int fd, int state) {
+    struct epoll_event event;
+    event.events = state;
+    event.data.fd = fd;
+    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, fd, &event);
+}
+
+/**
+ * 受理客户端连接
+ *
+ * @param server_fd
+ * @param epoll_fd
+ */
+void accept_client(int server_fd, int epoll_fd) {
+    int client_fd;
+    struct sockaddr_in client_addr;
+    socklen_t len_client_addr = sizeof(client_addr);
+
+    client_fd = accept(server_fd, (struct sockaddr *) &client_addr, &len_client_addr);
+    epoll_register(epoll_fd, client_fd, EPOLLIN);
+}
+
+/**
+ * 处理客户端的请求信息
+ *
+ * @param client_fd
+ * @param epoll_fd
+ */
+void deal_client(int client_fd, int epoll_fd) {
+    char http_request[BUFF_SIZE], response_header[BUFF_SIZE], http_response[BUFF_SIZE];
+    memset(http_request, 0, BUFF_SIZE); // 清空缓冲区内容
+    recv(client_fd, http_request, BUFF_SIZE, 0);
+
+    // 如果收到请求内容为空的，表示客户端正常断开的连接
+    if (strlen(http_request) == 0) {
+        epoll_cancel(epoll_fd, client_fd, EPOLLIN);
+        return;
+    }
+
+    deal_request(http_request);
+    sprintf(response_header, header_tmpl, strlen(response_content));
+    sprintf(http_response, "%s%s", response_header, response_content);
+    send(client_fd, http_response, sizeof(http_response), 0);
+}
+
 int main() {
-    server_fd = startServer();
+    int i;
+    int event_num;
+    int server_fd;
+    int epoll_fd;
+    int fd;
+    struct epoll_event events[MAX_EVENTS];
+
+    server_fd = server_start();
+    epoll_fd = epoll_create(FD_SIZE);
+    epoll_register(epoll_fd, server_fd, EPOLLIN|EPOLLET);// 这里注册socketEPOLL事件为ET模式
+
     while (1) {
-        client_fd = accept(server_fd, (struct sockaddr *) &client_addr, &len_client_addr);
-
-        memset(http_request, 0, BUFF_SIZE); // 由于是全局变量，防止上次连接的变量污染，初始化缓冲区内容
-        recv(client_fd, http_request, BUFF_SIZE, 0);
-
-        dealRequest(http_request);
-        dealResponse();
-
-        send(client_fd, http_response, sizeof(http_response), 0);
-        close(client_fd);
+        event_num = epoll_wait(epoll_fd, events, MAX_EVENTS, 0);
+        for (i = 0; i < event_num; i++) {
+            fd = events[i].data.fd;
+            if ((fd == server_fd) && (events[i].events == EPOLLIN)){
+                accept_client(server_fd, epoll_fd);
+            } else if (events[i].events == EPOLLIN){
+                deal_client(fd, epoll_fd);
+            } else if (events[i].events == EPOLLOUT)
+                continue;
+            // todo 数据过大，缓冲区处理不足的情况待处理
+        }
+        sleep(1);
     }
 }
