@@ -15,7 +15,6 @@
 #define FD_SIZE 1024
 #define MAX_EVENTS 256
 
-char response_content[BUFF_SIZE];
 char *header_tmpl = "HTTP/1.1 200 OK\r\n"
         "Server: ZBS's Server V1.0\r\n"
         "Accept-Ranges: bytes\r\n"
@@ -25,7 +24,7 @@ char *header_tmpl = "HTTP/1.1 200 OK\r\n"
 
 int server_start();
 
-void deal_request(char *http_request);
+char *deal_request(char *http_request);
 
 char *exec_php(char *args);
 
@@ -73,8 +72,8 @@ int server_start() {
  *
  * @param request_content
  */
-void deal_request(char *request_content) {
-    char *result;
+char *deal_request(char *request_content) {
+    static char *result;
     char *first_line = strtok(request_content, "\n"); // 获取第一行 结构类似 "GET /path VERSION"
     char *method = strtok(first_line, " ");  // 获取到请求方法
     if (strcmp(method, "GET") != 0) {
@@ -84,8 +83,7 @@ void deal_request(char *request_content) {
         result = exec_php(param);
     }
 
-    strcpy(response_content, result);
-    return;
+    return result;
 }
 
 /**
@@ -129,7 +127,7 @@ void epoll_register(int epoll_fd, int fd, int state) {
 }
 
 /**
- * 取消epoll事件
+ * 注销epoll事件
  *
  * @param epoll_fd  epoll句柄
  * @param fd        socket句柄
@@ -164,6 +162,7 @@ void accept_client(int server_fd, int epoll_fd) {
  * @param epoll_fd
  */
 void deal_client(int client_fd, int epoll_fd) {
+    char *response_content;
     char http_request[BUFF_SIZE], response_header[BUFF_SIZE], http_response[BUFF_SIZE];
     memset(http_request, 0, BUFF_SIZE); // 清空缓冲区内容
     recv(client_fd, http_request, BUFF_SIZE, 0);
@@ -174,7 +173,7 @@ void deal_client(int client_fd, int epoll_fd) {
         return;
     }
 
-    deal_request(http_request);
+    response_content = deal_request(http_request);
     sprintf(response_header, header_tmpl, strlen(response_content));
     sprintf(http_response, "%s%s", response_header, response_content);
     send(client_fd, http_response, sizeof(http_response), 0);
@@ -201,9 +200,8 @@ int main() {
             } else if (events[i].events == EPOLLIN){
                 deal_client(fd, epoll_fd);
             } else if (events[i].events == EPOLLOUT)
+                // todo 数据过大，缓冲区不足的情况待处理
                 continue;
-            // todo 数据过大，缓冲区处理不足的情况待处理
         }
-        sleep(1);
     }
 }
