@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 #include "quadTree.h"
 
 /**
@@ -29,8 +30,9 @@ void insertEle(struct QuadTreeNode *node, struct ElePoint ele) {
         return;
     }
 
-    float mid_vertical = (node->region.up + node->region.bottom) / 2;
-    float mid_horizontal = (node->region.left + node->region.right) / 2;
+
+    double mid_vertical = (node->region.up + node->region.bottom) / 2;
+    double mid_horizontal = (node->region.left + node->region.right) / 2;
     if (ele.lat > mid_vertical) {
         if (ele.lng > mid_horizontal) {
             insertEle(node->RU, ele);
@@ -54,21 +56,24 @@ void insertEle(struct QuadTreeNode *node, struct ElePoint ele) {
  * @param node
  */
 void splitNode(struct QuadTreeNode *node) {
-    float mid_vertical = (node->region.up + node->region.bottom) / 2;
-    float mid_horizontal = (node->region.left + node->region.right) / 2;
+    double mid_vertical = (node->region.up + node->region.bottom) / 2;
+    double mid_horizontal = (node->region.left + node->region.right) / 2;
 
+    node->is_leaf = 0;
     node->RU = createChildNode(node, mid_vertical, node->region.up, mid_horizontal, node->region.right);
     node->LU = createChildNode(node, mid_vertical, node->region.up, node->region.left, mid_horizontal);
-    node->RU = createChildNode(node, node->region.bottom, mid_vertical, mid_horizontal, node->region.right);
-    node->RU = createChildNode(node, node->region.bottom, mid_vertical, node->region.left, mid_horizontal);
-    node->is_leaf = 0;
-    for (int i = 0; i < node->ele_num; ++i) {
+    node->RB = createChildNode(node, node->region.bottom, mid_vertical, mid_horizontal, node->region.right);
+    node->LB = createChildNode(node, node->region.bottom, mid_vertical, node->region.left, mid_horizontal);
+
+    for (int i = 0; i < node->ele_num; i++) {
         insertEle(node, *node->ele_list[i]);
+        free(node->ele_list[i]);
+        node->ele_num--;
     }
 }
 
-struct QuadTreeNode *createChildNode(struct QuadTreeNode *node, float bottom, float up, float left, float right) {
-    int depth = node->depth;
+struct QuadTreeNode *createChildNode(struct QuadTreeNode *node, double bottom, double up, double left, double right) {
+    int depth = node->depth + 1;
     struct QuadTreeNode *childNode = (struct QuadTreeNode *) malloc(sizeof(struct QuadTreeNode));
     struct Region *region = (struct Region *) malloc(sizeof(struct Region));
     initRegion(region, bottom, up, left, right);
@@ -91,25 +96,25 @@ void combineNode(struct QuadTreeNode *node) {
      */
 }
 
-struct ElePoint *queryEle(struct QuadTreeNode *node, struct ElePoint ele) {
-    if (node->is_leaf == 1) {
-        return *node->ele_list;
+struct ElePoint *queryEle(struct QuadTreeNode node, struct ElePoint ele) {
+    if (node.is_leaf == 1) {
+        return *node.ele_list;
     }
 
-    float mid_vertical = (node->region.up + node->region.bottom) / 2;
-    float mid_horizontal = (node->region.left + node->region.right) / 2;
+    double mid_vertical = (node.region.up + node.region.bottom) / 2;
+    double mid_horizontal = (node.region.left + node.region.right) / 2;
 
     if (ele.lat > mid_vertical) {
         if (ele.lng > mid_horizontal) {
-            return queryEle(node->RU, ele);
+            return queryEle(*node.RU, ele);
         } else {
-            return queryEle(node->LU, ele);
+            return queryEle(*node.LU, ele);
         }
     } else {
         if (ele.lng > mid_horizontal) {
-            return queryEle(node->RB, ele);
+            return queryEle(*node.RB, ele);
         } else {
-            return queryEle(node->LB, ele);
+            return queryEle(*node.LB, ele);
         }
     }
 }
@@ -121,7 +126,7 @@ void initNode(struct QuadTreeNode *node, int depth, struct Region region) {
     node->region = region;
 }
 
-void initRegion(struct Region *region, float bottom, float up, float left, float right) {
+void initRegion(struct Region *region, double bottom, double up, double left, double right) {
     region->bottom = bottom;
     region->up = up;
     region->left = left;
@@ -134,16 +139,23 @@ int main() {
 
     struct ElePoint ele;
     initRegion(&root_region, -90, 90, -180, 180);
+    initNode(&root, 1, root_region);
 
-    int lng;
-    int lat;
-    char str[100];
-    for (int i = 0; i < 5; i++) {
-        ele.lng = rand()%180-rand()%360;
-        ele.lat = rand()%90-rand()%180;
-        strcpy(ele.desc, "hi");
-
-        printf("%f,%f,%s", ele.lng,ele.lat,ele.desc);
-        insertEle(&root,ele);
+    srand((int)time(NULL));
+    for (int i = 0; i < 100000; i++) {
+        ele.lng = (float)(rand() % 360 - 180 + (float)(rand() % 1000) / 1000);
+        ele.lat = (float)(rand() % 180 - 90 + (float)(rand() % 1000) / 1000);
+        printf("%f,%f", ele.lng,ele.lat);
+        insertEle(&root, ele);
     }
+
+    struct ElePoint test;
+    test.lat = -24;
+    test.lng = -45.4;
+    struct ElePoint *arr = queryEle(root, test);
+    int res_len = sizeof(arr);
+    for (int j = 0; j < res_len; ++j) {
+        printf("%f,%f\n", arr[res_len].lng, arr[res_len].lat);
+    }
+
 }

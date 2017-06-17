@@ -10,15 +10,15 @@
 #define QUADRANT_RB 4
 
 struct Region {
-    float up;
-    float bottom;
-    float left;
-    float right;
+    double up;
+    double bottom;
+    double left;
+    double right;
 };
 
 struct ElePoint {
-    float lng;
-    float lat;
+    double lng;
+    double lat;
     char desc[16];
 };
 
@@ -44,9 +44,9 @@ void splitNode(struct QuadTreeNode *node);
 
 void combineNode(struct QuadTreeNode *node);
 
-struct ElePoint *queryEle(struct QuadTreeNode *tree, struct ElePoint ele);
+struct ElePoint *queryEle(struct QuadTreeNode tree, struct ElePoint ele);
 
-void initRegion(struct Region *region, float up, float bottom, float left, float right);
+void initRegion(struct Region *region, double up, double bottom, double left, double right);
 
-struct QuadTreeNode *createChildNode(struct QuadTreeNode *node, float bottom, float up, float left, float right);
+struct QuadTreeNode *createChildNode(struct QuadTreeNode *node, double bottom, double up, double left, double right);
 #endif
