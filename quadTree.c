@@ -96,9 +96,13 @@ void combineNode(struct QuadTreeNode *node) {
      */
 }
 
-struct ElePoint *queryEle(struct QuadTreeNode node, struct ElePoint ele) {
+void queryEle(struct QuadTreeNode node, struct ElePoint ele) {
     if (node.is_leaf == 1) {
-        return *node.ele_list;
+        printf("附近点有%d个，分别是：\n", node.ele_num);
+        for (int j = 0; j < node.ele_num; j++) {
+            printf("%f,%f\n", node.ele_list[j]->lng, node.ele_list[j]->lat);
+        }
+        return;
     }
 
     double mid_vertical = (node.region.up + node.region.bottom) / 2;
@@ -106,15 +110,15 @@ struct ElePoint *queryEle(struct QuadTreeNode node, struct ElePoint ele) {
 
     if (ele.lat > mid_vertical) {
         if (ele.lng > mid_horizontal) {
-            return queryEle(*node.RU, ele);
+            queryEle(*node.RU, ele);
         } else {
-            return queryEle(*node.LU, ele);
+            queryEle(*node.LU, ele);
         }
     } else {
         if (ele.lng > mid_horizontal) {
-            return queryEle(*node.RB, ele);
+            queryEle(*node.RB, ele);
         } else {
-            return queryEle(*node.LB, ele);
+            queryEle(*node.LB, ele);
         }
     }
 }
@@ -145,17 +149,11 @@ int main() {
     for (int i = 0; i < 100000; i++) {
         ele.lng = (float)(rand() % 360 - 180 + (float)(rand() % 1000) / 1000);
         ele.lat = (float)(rand() % 180 - 90 + (float)(rand() % 1000) / 1000);
-        printf("%f,%f", ele.lng,ele.lat);
         insertEle(&root, ele);
     }
 
     struct ElePoint test;
     test.lat = -24;
     test.lng = -45.4;
-    struct ElePoint *arr = queryEle(root, test);
-    int res_len = sizeof(arr);
-    for (int j = 0; j < res_len; ++j) {
-        printf("%f,%f\n", arr[res_len].lng, arr[res_len].lat);
-    }
-
+    queryEle(root, test);
 }

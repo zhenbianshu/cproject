@@ -44,7 +44,7 @@ void splitNode(struct QuadTreeNode *node);
 
 void combineNode(struct QuadTreeNode *node);
 
-struct ElePoint *queryEle(struct QuadTreeNode tree, struct ElePoint ele);
+void queryEle(struct QuadTreeNode tree, struct ElePoint ele);
 
 void initRegion(struct Region *region, double up, double bottom, double left, double right);
 
