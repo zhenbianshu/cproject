@@ -12,6 +12,7 @@
  *
  * @param node
  * @param ele
+ * todo 使用元素原地址，避免重新分配内存造成的效率浪费
  */
 void insertEle(struct QuadTreeNode *node, struct ElePoint ele) {
     if (1 == node->is_leaf) {
@@ -19,6 +20,7 @@ void insertEle(struct QuadTreeNode *node, struct ElePoint ele) {
             splitNode(node);
             insertEle(node, ele);
         } else {
+            // todo 点排重（不排重的话如果相同的点数目大于 MAX_ELE_NUM， 会造成无限循环分裂）
             struct ElePoint *ele_ptr = (struct ElePoint *) malloc(sizeof(struct ElePoint));
             ele_ptr->lat = ele.lat;
             ele_ptr->lng = ele.lng;
